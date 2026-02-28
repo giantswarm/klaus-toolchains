@@ -72,8 +72,8 @@ emit_tag_job() {
         image: giantswarm/klaus-toolchains/${name}
         dockerfile: ./${dir}/${dockerfile}
         build-context: ./${dir}
-        platforms: "linux/amd64,linux/arm64"
-        resource_class: xlarge
+        platforms: "linux/amd64"
+        resource_class: medium
         git-tag-prefix: "${prefix}"
         annotations: |
 $(get_annotations "$name" "          ")
