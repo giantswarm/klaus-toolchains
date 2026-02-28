@@ -1,0 +1,11 @@
+# OCI metadata is set via --annotation at build time.
+ARG GO_VERSION=1.25
+FROM golang:${GO_VERSION} AS go-source
+FROM gsoci.azurecr.io/giantswarm/klaus-debian:0.0.32
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=go-source /usr/local/go /usr/local/go
+RUN mkdir -p /go && chown klaus:klaus /go
+USER klaus
+ENV GOPATH=/go PATH="/usr/local/go/bin:/go/bin:${PATH}"

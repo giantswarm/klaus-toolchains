@@ -1,0 +1,62 @@
+---
+# yamllint disable rule:truthy
+name: Auto Release
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  auto_release:
+    name: Auto Release
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        env:
+          GIT_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.name "$GIT_ACTOR"
+          git config user.email "${GIT_ACTOR}@users.noreply.github.com"
+
+      - name: Detect changed images and create releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1...HEAD \
+            | grep '^klaus-' | cut -d/ -f1 | sort -u)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No image directories changed, skipping release"
+            exit 0
+          fi
+
+          for dir in $CHANGED; do
+            NAME="${dir#klaus-}"
+            LATEST=$(git tag -l "${NAME}/v*" --sort=-v:refname | head -1)
+
+            if [ -z "$LATEST" ]; then
+              NEXT="${NAME}/v0.1.0"
+            else
+              VERSION="${LATEST#${NAME}/v}"
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+              NEXT="${NAME}/v${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+
+            echo "Creating tag $NEXT for $dir"
+            git tag "$NEXT"
+            git push origin "$NEXT"
+            sleep 2
+
+            gh release create "$NEXT" --title "$NEXT" --generate-notes
+          done

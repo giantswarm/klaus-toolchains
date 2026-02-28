@@ -1,0 +1,14 @@
+{
+  "extends": [
+    // Base config - https://github.com/giantswarm/renovate-presets/blob/main/default.json5
+    "github>giantswarm/renovate-presets:default.json5",
+  ],
+  "packageRules": [
+    {
+      "description": "Group all Klaus base image version updates into a single PR",
+      "matchDatasources": ["docker"],
+      "matchPackagePatterns": ["giantswarm\\/klaus"],
+      "groupName": "klaus-images",
+    },
+  ],
+}
