@@ -73,7 +73,7 @@ emit_tag_job() {
         dockerfile: ./${dir}/${dockerfile}
         build-context: ./${dir}
         platforms: "linux/amd64,linux/arm64"
-        resource_class: medium
+        resource_class: xlarge
         git-tag-prefix: "${prefix}"
         annotations: |
 $(get_annotations "$name" "          ")
