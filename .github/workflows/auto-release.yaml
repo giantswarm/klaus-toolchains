@@ -30,6 +30,7 @@ jobs:
           git config user.email "${GIT_ACTOR}@users.noreply.github.com"
 
       - name: Detect changed images and create releases
+        id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -38,9 +39,11 @@ jobs:
 
           if [ -z "$CHANGED" ]; then
             echo "No image directories changed, skipping release"
+            echo "released=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          RELEASED=()
           for dir in $CHANGED; do
             NAME="${dir#klaus-}"
             LATEST=$(git tag -l "${NAME}/v*" --sort=-v:refname | head -1)
@@ -59,4 +62,52 @@ jobs:
             sleep 2
 
             gh release create "$NEXT" --title "$NEXT" --generate-notes
+            RELEASED+=("${NAME}=${NEXT#${NAME}/v}")
           done
+
+          # Pass released toolchains as "name=version" pairs (space-separated)
+          echo "released=${RELEASED[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify downstream repos
+        if: steps.release.outputs.released != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.DOWNSTREAM_DISPATCH_TOKEN }}
+          RELEASED: ${{ steps.release.outputs.released }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::DOWNSTREAM_DISPATCH_TOKEN not set" \
+              "- skipping downstream notification"
+            exit 0
+          fi
+
+          DOWNSTREAM_REPOS=(
+            "giantswarm/klaus-personalities"
+          )
+          FAILED=0
+          for entry in $RELEASED; do
+            TOOLCHAIN="${entry%%=*}"
+            VERSION="${entry#*=}"
+
+            if ! echo "$VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
+              echo "::warning::Skipping invalid version: $VERSION"
+              continue
+            fi
+
+            for repo in "${DOWNSTREAM_REPOS[@]}"; do
+              echo "Dispatching to $repo (toolchain=$TOOLCHAIN, version=$VERSION)"
+              if gh api \
+                --method POST \
+                "/repos/${repo}/dispatches" \
+                -f "event_type=toolchain-release" \
+                -f "client_payload[toolchain]=${TOOLCHAIN}" \
+                -f "client_payload[version]=${VERSION}"; then
+                echo "  -> Notified $repo"
+              else
+                echo "::warning::Failed to notify $repo" >&2
+                FAILED=1
+              fi
+            done
+          done
+          exit $FAILED
