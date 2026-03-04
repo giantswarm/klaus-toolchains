@@ -1,7 +1,7 @@
 # OCI metadata is set via --annotation at build time.
 ARG GO_VERSION=1.25
 FROM golang:${GO_VERSION} AS go-source
-FROM gsoci.azurecr.io/giantswarm/klaus-debian:0.0.37
+FROM gsoci.azurecr.io/giantswarm/klaus-debian:0.0.38
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
