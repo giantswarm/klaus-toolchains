@@ -1,0 +1,74 @@
+---
+# yamllint disable rule:truthy
+name: Klaus Release Dispatch
+on:
+  repository_dispatch:
+    types: [klaus-release]
+
+permissions: {}
+
+jobs:
+  bump_version:
+    name: Bump Klaus Base Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Validate version
+        id: validate
+        env:
+          RAW_VERSION: ${{ github.event.client_payload.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RAW_VERSION" ]; then
+            echo "::error::Missing version in client_payload"
+            exit 1
+          fi
+          # Strip leading "v" if present, then enforce strict semver
+          VERSION="${RAW_VERSION#v}"
+          if ! echo "$VERSION" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::Invalid version format: $RAW_VERSION"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Update Dockerfiles
+        env:
+          NEW_VERSION: ${{ steps.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "Updating klaus base images to ${NEW_VERSION}"
+          while IFS= read -r df; do
+            sed -i -E \
+              "s|(FROM gsoci\.azurecr\.io/giantswarm/klaus(-[a-z]+)?):[0-9]+\.[0-9]+\.[0-9]+|\1:${NEW_VERSION}|g" \
+              "$df"
+          done < <(find . -name 'Dockerfile*' -path '*/klaus-*/*')
+          git diff
+
+      - name: Check for changes
+        id: check
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Dockerfiles changed, skipping PR"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump klaus base image to ${{ steps.validate.outputs.version }}"
+          title: "chore: bump klaus base image to ${{ steps.validate.outputs.version }}"
+          body: |
+            Automated PR triggered by `repository_dispatch` from the upstream klaus release.
+
+            Updates all `FROM` lines referencing `gsoci.azurecr.io/giantswarm/klaus*` to version `${{ steps.validate.outputs.version }}`.
+          branch: bump-klaus-dispatch-${{ steps.validate.outputs.version }}
+          delete-branch: true
