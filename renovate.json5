@@ -9,6 +9,7 @@
       "matchDatasources": ["docker"],
       "matchPackagePatterns": ["giantswarm\\/klaus"],
       "groupName": "klaus-images",
+      "automerge": true,
     },
   ],
 }
