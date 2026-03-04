@@ -60,6 +60,7 @@ jobs:
           fi
 
       - name: Create pull request
+        id: cpr
         if: steps.check.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
@@ -72,3 +73,10 @@ jobs:
             Updates all `FROM` lines referencing `gsoci.azurecr.io/giantswarm/klaus*` to version `${{ steps.validate.outputs.version }}`.
           branch: bump-klaus-dispatch-${{ steps.validate.outputs.version }}
           delete-branch: true
+
+      - name: Enable automerge
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh pr merge --auto --squash "$PR_NUMBER"
