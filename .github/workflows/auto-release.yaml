@@ -70,7 +70,6 @@ jobs:
 
       - name: Notify downstream repos
         if: steps.release.outputs.released != ''
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.DOWNSTREAM_DISPATCH_TOKEN }}
           RELEASED: ${{ steps.release.outputs.released }}
@@ -96,12 +95,12 @@ jobs:
             fi
 
             for repo in "${DOWNSTREAM_REPOS[@]}"; do
-              echo "Dispatching to $repo (toolchain=$TOOLCHAIN, version=$VERSION)"
+              echo "Dispatching to $repo (component=$TOOLCHAIN, version=$VERSION)"
               if gh api \
                 --method POST \
                 "/repos/${repo}/dispatches" \
                 -f "event_type=toolchain-release" \
-                -f "client_payload[toolchain]=${TOOLCHAIN}" \
+                -f "client_payload[component]=${TOOLCHAIN}" \
                 -f "client_payload[version]=${VERSION}"; then
                 echo "  -> Notified $repo"
               else
