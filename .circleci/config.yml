@@ -7,7 +7,7 @@ orbs:
 jobs:
   generate-config:
     docker:
-      - image: cimg/base:current
+      - image: cimg/base:stable
     steps:
       - checkout
       - run:
