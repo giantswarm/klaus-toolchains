@@ -1,5 +1,5 @@
 # OCI metadata is set via --annotation at build time.
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.26
 FROM golang:${GO_VERSION} AS go-source
 FROM gsoci.azurecr.io/giantswarm/klaus-debian:0.0.98
 USER root
