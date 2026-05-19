@@ -8,7 +8,7 @@ set -euo pipefail
 # Tag builds:    single job for the image matching the tag prefix (multi-arch).
 # No changes:    minimal no-op config.
 
-ARCHITECT_ORB="giantswarm/architect@6.14.0"
+ARCHITECT_ORB="giantswarm/architect@8.2.2"
 
 # Keep in sync with Makefile ANNOTATION_* variables.
 ANNOTATION_AUTHOR_NAME="Giant Swarm GmbH"
@@ -50,8 +50,9 @@ get_annotations() {
 emit_branch_job() {
   local name="$1" dockerfile="$2" dir="$3"
   cat <<EOF
-    - architect/push-to-registries-multiarch:
+    - architect/push-to-registries:
         context: architect
+        multiarch: true
         name: push-${name}
         image: giantswarm/klaus-toolchains/${name}
         dockerfile: ./${dir}/${dockerfile}
@@ -65,9 +66,12 @@ EOF
 
 emit_tag_job() {
   local name="$1" dockerfile="$2" dir="$3" prefix="$4"
+  # split-china-push skips Aliyun on the buildx push; the companion
+  # sync-china-registry job mirrors gsoci -> Aliyun via galaxy-runner.
   cat <<EOF
-    - architect/push-to-registries-multiarch:
+    - architect/push-to-registries:
         context: architect
+        multiarch: true
         name: push-${name}
         image: giantswarm/klaus-toolchains/${name}
         dockerfile: ./${dir}/${dockerfile}
@@ -75,8 +79,21 @@ emit_tag_job() {
         platforms: "linux/amd64,linux/arm64"
         resource_class: medium
         git-tag-prefix: "${prefix}"
+        split-china-push: true
         annotations: |
 $(get_annotations "$name" "          ")
+        filters:
+          tags:
+            only: /^${prefix}\\/v.*/
+          branches:
+            ignore: /.*/
+
+    - architect/sync-china-registry:
+        context: architect
+        name: sync-china-registry-${name}
+        image: giantswarm/klaus-toolchains/${name}
+        requires:
+        - push-${name}
         filters:
           tags:
             only: /^${prefix}\\/v.*/
