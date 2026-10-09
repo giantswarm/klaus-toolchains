@@ -1,0 +1,153 @@
+# yamllint disable rule:truthy
+# Per-toolchain release tagger, kept by hand: devctl's generated
+# Auto-release workflow releases a repository as one un-prefixed v* line,
+# while every klaus-<name>/ directory here is an image with its own
+# <name>/vX.Y.Z line (giantswarm/devctl#2591 tracks a generated mode).
+# The file is not called auto-release.yaml: devctl's alignment deletes
+# that name as a leftover of its own release flow.
+#
+# On every push to main, each toolchain whose directory changed since its
+# latest <name>/v* tag gets the next patch tag and a GitHub Release. Diffing
+# against the toolchain's own last tag, not just the pushed commit, lets a
+# failed or skipped run catch up on the next one. The tag push starts the
+# CircleCI tag pipeline (.circleci/generate-config.sh), which builds the
+# multi-arch images and pushes them to gsoci.
+#
+# Minor and major bumps are not cut here; the next patch follows whatever
+# the toolchain's latest tag is.
+name: Toolchain release
+
+on:
+  push:
+    branches:
+      - main
+  # Re-runs the same detection, e.g. after a failed run.
+  workflow_dispatch: {}
+
+permissions:
+  contents: write       # push tags and create the GitHub Releases
+
+concurrency:
+  group: toolchain-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Tag and release changed toolchains
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          released=()
+          for dir in $(find . -maxdepth 2 -path './klaus-*/Dockerfile*' -printf '%h\n' | sed 's|^\./||' | sort -u); do
+            name="${dir#klaus-}"
+            latest=$(git tag -l "${name}/v*" --sort=-v:refname \
+              | grep -E "^${name}/v[0-9]+\.[0-9]+\.[0-9]+$" | head -1 || true)
+
+            if [ -z "$latest" ]; then
+              next="${name}/v0.1.0"
+            elif git diff --quiet "$latest" HEAD -- "$dir"; then
+              echo "${dir}: unchanged since ${latest}"
+              continue
+            else
+              IFS='.' read -r major minor patch <<< "${latest#"${name}"/v}"
+              next="${name}/v${major}.${minor}.$((patch + 1))"
+            fi
+
+            echo "${dir}: releasing ${next}"
+            # One tag per push: CircleCI starts one pipeline per tag event.
+            git tag "$next"
+            git push origin "refs/tags/${next}"
+            notes=(--generate-notes)
+            [ -z "$latest" ] || notes+=(--notes-start-tag "$latest")
+            gh release create "$next" --title "$next" --verify-tag "${notes[@]}"
+            released+=("$next")
+            sleep 2
+          done
+
+          echo "tags=${released[*]}" >> "$GITHUB_OUTPUT"
+
+      # GitHub delivers a tag push webhook once and never retries; CircleCI
+      # has answered some with an error and built nothing. So ask CircleCI
+      # for each tag's pipeline and trigger it through the API when it never
+      # showed up. Only a positively empty list (HTTP 200) triggers: a second
+      # pipeline on a tag would race the image push.
+      - name: Verify CircleCI picked up the tags
+        if: steps.release.outputs.tags != ''
+        env:
+          TAGS: ${{ steps.release.outputs.tags }}
+          CIRCLECI_API_TOKEN: ${{ secrets.CIRCLECI_API_TOKEN }}
+          CIRCLECI_PIPELINE_WAIT_SECONDS: "120"
+        run: |
+          set -euo pipefail
+          api="https://circleci.com/api/v2/project/gh/${GITHUB_REPOSITORY}/pipeline"
+          auth=()
+          if [ -n "${CIRCLECI_API_TOKEN}" ]; then
+            auth=(-H "Circle-Token: ${CIRCLECI_API_TOKEN}")
+          fi
+
+          # Sets found to the pipeline number of tag $1, empty if there is
+          # none, and last_code to the API's last HTTP status.
+          find_pipeline() {
+            local url="$api" pages=0 resp body next
+            found=""
+            while [ -n "$url" ] && [ "$pages" -lt 2 ]; do
+              resp=$(curl -sS "${auth[@]}" -w '\n%{http_code}' "$url" || printf '\n000')
+              last_code=${resp##*$'\n'}
+              body=${resp%$'\n'*}
+              [ "$last_code" = "200" ] || break
+              found=$(jq -r --arg tag "$1" '[.items[] | select(.vcs.tag == $tag)][0] | select(. != null) | .number' <<<"$body")
+              [ -z "$found" ] || break
+              next=$(jq -r '.next_page_token // empty' <<<"$body")
+              url=${next:+"${api}?page-token=${next}"}
+              pages=$((pages + 1))
+            done
+          }
+
+          failed=0
+          for tag in $TAGS; do
+            manual="curl -X POST -H 'Circle-Token: <token>' -H 'Content-Type: application/json' -d '{\"tag\":\"${tag}\"}' ${api}"
+            deadline=$((SECONDS + CIRCLECI_PIPELINE_WAIT_SECONDS))
+            last_code=""
+            while :; do
+              find_pipeline "$tag"
+              if [ -n "$found" ]; then
+                echo "CircleCI pipeline #${found} exists for ${tag}: https://app.circleci.com/pipelines/github/${GITHUB_REPOSITORY}/${found}"
+                continue 2
+              fi
+              case "$last_code" in
+                200) ;;
+                *) break ;;
+              esac
+              [ "$SECONDS" -lt "$deadline" ] || break
+              echo "no CircleCI pipeline for ${tag} yet; retrying in 10 s"
+              sleep 10
+            done
+
+            if [ "$last_code" != "200" ]; then
+              echo "::error::cannot verify that CircleCI built ${tag} (HTTP ${last_code}). Check https://app.circleci.com/pipelines/github/${GITHUB_REPOSITORY} and, if the tag is missing: ${manual}"
+              failed=1
+            elif [ -z "${CIRCLECI_API_TOKEN}" ]; then
+              echo "::error::CircleCI never built ${tag} and no CIRCLECI_API_TOKEN secret is set to trigger it. Fix by hand: ${manual}"
+              failed=1
+            else
+              echo "CircleCI never built ${tag}; triggering the pipeline through the API"
+              resp=$(curl -sS "${auth[@]}" -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' -d "{\"tag\":\"${tag}\"}" "$api" || printf '\n000')
+              code=${resp##*$'\n'}
+              if [ "$code" != "201" ]; then
+                echo "::error::triggering the CircleCI pipeline for ${tag} failed (HTTP ${code}): ${resp%$'\n'*}"
+                failed=1
+              fi
+            fi
+          done
+          exit "$failed"
