@@ -2,7 +2,8 @@
 # Per-toolchain release tagger, kept by hand: devctl's generated
 # Auto-release workflow releases a repository as one un-prefixed v* line,
 # while every klaus-<name>/ directory here is an image with its own
-# <name>/vX.Y.Z line (giantswarm/devctl#2591 tracks a generated mode).
+# <name>/vX.Y.Z line, and every harness-<name>/ directory one with its own
+# harness-<name>/vX.Y.Z line (giantswarm/devctl#2591 tracks a generated mode).
 # The file is not called auto-release.yaml: devctl's alignment deletes
 # that name as a leftover of its own release flow.
 #
@@ -49,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           released=()
-          for dir in $(find . -maxdepth 2 -path './klaus-*/Dockerfile*' -printf '%h\n' | sed 's|^\./||' | sort -u); do
+          for dir in $(find . -maxdepth 2 \( -path './klaus-*/Dockerfile*' -o -path './harness-*/Dockerfile*' \) -printf '%h\n' | sed 's|^\./||' | sort -u); do
             name="${dir#klaus-}"
             latest=$(git tag -l "${name}/v*" --sort=-v:refname \
               | grep -E "^${name}/v[0-9]+\.[0-9]+\.[0-9]+$" | head -1 || true)

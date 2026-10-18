@@ -1,0 +1,13 @@
+# One command per line, run by scripts/harness-contract.sh as the kagent user
+# (uid 65532, HOME=/data); each must exit 0.
+node --version
+npm --version
+npx --version
+corepack --version
+pnpm --version
+yarn --version
+python3 --version
+make --version
+g++ --version
+node -e 'require("node:child_process").execFileSync("git", ["--version"], { stdio: "inherit" })'
+cd "$(mktemp -d)" && npm init -y >/dev/null && npm install --no-audit --no-fund is-number@7.0.0 >/dev/null && node -e 'process.exit(require("is-number")(1) ? 0 : 1)' && echo npm install works
