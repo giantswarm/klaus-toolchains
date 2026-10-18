@@ -1,0 +1,31 @@
+// Repo-owned Renovate rules, the last `extends` entry of renovate.json5.
+// Renovate resolves this file from the default branch on every run.
+{
+  packageRules: [
+    {
+      description: 'Group all Klaus base image version updates into a single PR',
+      matchDatasources: ['docker'],
+      matchPackagePatterns: ['giantswarm\\/klaus'],
+      groupName: 'klaus-images',
+      automerge: true,
+    },
+    {
+      description: 'Re-base every harness-* image on each kagent-line release of claude-harness, tag and digest in one PR, reviewed by Bumblebee; the Harness contract workflow proves it',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['gsoci.azurecr.io/giantswarm/kagent/claude-harness'],
+      matchFileNames: ['harness-*/**'],
+      groupName: 'kagent claude-harness',
+      versioning: 'semver',
+      automerge: false,
+      reviewers: ['team:team-bumblebee'],
+    },
+    {
+      description: 'harness-node stays on Node.js 24 (LTS): a new Node.js major is a decision, not a bump',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['docker.io/library/node', 'node'],
+      matchFileNames: ['harness-node/**'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
+    },
+  ],
+}

@@ -1,0 +1,36 @@
+# yamllint disable rule:truthy
+# Harness image contract: every harness-<name>/ image still boots as the
+# kagent claude Harness it is built FROM (scripts/harness-contract.sh). Runs
+# on every pull request that touches a harness image, Renovate's re-base on a
+# kagent-line release among them. The image is built locally and never pushed:
+# CircleCI publishes (.circleci/generate-config.sh).
+name: Harness contract
+
+on:
+  pull_request:
+    paths:
+      - 'harness-*/**'
+      - scripts/harness-contract.sh
+      - .github/workflows/harness-contract.yaml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Contract
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build and check every harness image
+        run: |
+          set -euo pipefail
+          for dir in $(find . -maxdepth 2 -path './harness-*/Dockerfile' -printf '%h\n' | sed 's|^\./||' | sort -u); do
+            echo "::group::${dir}"
+            docker build -t "${dir}:contract" "${dir}"
+            scripts/harness-contract.sh "${dir}" "${dir}:contract"
+            echo "::endgroup::"
+          done
