@@ -10,7 +10,7 @@
 # release and on each Node.js 24 release (renovate.json5).
 FROM docker.io/library/node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS node-source
 
-FROM gsoci.azurecr.io/giantswarm/kagent/claude-harness:1.18.0@sha256:e6fe4d58ed47e88c46e708170751f1447aaade382b6f6fa9a41c94794a34037d
+FROM gsoci.azurecr.io/giantswarm/kagent/claude-harness:1.19.0@sha256:450f37fe05bffa845736d2afd63a7d81ae36527246d996c567024a95e2941efa
 
 COPY --from=node-source /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-source /usr/local/include/node /usr/local/include/node
