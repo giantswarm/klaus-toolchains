@@ -8,7 +8,7 @@
 #
 # Both images are digest-pinned; Renovate re-bases this one on each kagent-line
 # release and on each Node.js 24 release (renovate.json5).
-FROM docker.io/library/node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS node-source
+FROM docker.io/library/node:24.22.1-alpine3.24@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS node-source
 
 FROM gsoci.azurecr.io/giantswarm/kagent/claude-harness:1.22.2@sha256:c9678b214b4043d7f014ded99415aecd4020fcbd5e689b776afe16ee239a8692
 
